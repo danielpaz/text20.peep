@@ -129,7 +129,7 @@ public class EyeTrackingDevice {
                 EyeTrackingDevice.this.currentStatus = "Thread came up but no device was obtained yet. This ususally takes up " + "to five seconds. In case this message appears in, say, 10 seconds, Something is messed up.";
 
                 final EyeTrackingDeviceProvider provider = EyeTrackingDevice.this.pluginManager.getPlugin(EyeTrackingDeviceProvider.class);
-                final de.dfki.km.text20.services.trackingdevices.eyes.EyeTrackingDevice device = provider.openDevice("discover://youngest");
+                final de.dfki.km.text20.services.trackingdevices.eyes.EyeTrackingDevice device = provider.openDevice(string);
 
                 if (device == null) {
                     EyeTrackingDevice.this.currentStatus = "We were unable to find a TrackingServer. " + "This does NOT say that there was no eye tracker " + "found, but rather that the TrackingServer " + "which talks to the tracker wasn't there. If you haven't started it, start it, " + "if you have, try to make sure you have a network connection and cable plugged " + "in (most common source of error).";
@@ -292,7 +292,7 @@ public class EyeTrackingDevice {
      * @return .
      */
     public static EyeTrackingDevice open(PApplet applet) {
-        return open(applet, "discover://youngest");
+        return open(applet, "discover://nearest");
     }
 
     /**
@@ -307,7 +307,7 @@ public class EyeTrackingDevice {
 
         // Configure the plugin framework
         final JSPFProperties props = new JSPFProperties();
-        props.setProperty(PluginManager.class, "logging.level", "ALL");
+        props.setProperty(PluginManager.class, "logging.level", "OFF");
         props.setProperty(UpdateCheck.class, "update.url", "http://api.text20.net/common/versioncheck/");
         props.setProperty(UpdateCheck.class, "update.enabled", "true");
         props.setProperty(UpdateCheck.class, "product.name", "peep");
