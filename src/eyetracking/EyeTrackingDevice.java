@@ -27,16 +27,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import net.xeoh.plugins.base.PluginConfiguration;
 import net.xeoh.plugins.base.PluginManager;
 import net.xeoh.plugins.base.impl.PluginManagerFactory;
 import net.xeoh.plugins.base.util.JSPFProperties;
 import net.xeoh.plugins.base.util.uri.ClassURI;
-import net.xeoh.plugins.informationbroker.InformationBroker;
 import net.xeoh.plugins.informationbroker.impl.InformationBrokerImpl;
 import net.xeoh.plugins.meta.updatecheck.UpdateCheck;
 import net.xeoh.plugins.meta.updatecheck.impl.UpdateCheckImpl;
-import net.xeoh.plugins.remote.RemoteAPILipe;
 import net.xeoh.plugins.remote.impl.lipermi.RemoteAPIImpl;
 import net.xeoh.plugins.remotediscovery.impl.v4.RemoteDiscoveryImpl;
 import processing.core.PApplet;
@@ -327,10 +324,6 @@ public class EyeTrackingDevice {
         pm.addPluginsFrom(new ClassURI(TrackingServerDeviceProviderImpl.class).toURI());
         pm.addPluginsFrom(new ClassURI(GazeEvaluatorManagerImpl.class).toURI());
         pm.addPluginsFrom(new ClassURI(FixationHandlerFactory.class).toURI());
-        
-        System.out.println(pm.getPlugin(InformationBroker.class));
-        System.out.println(pm.getPlugin(RemoteAPILipe.class));
-        System.out.println(pm.getPlugin(PluginConfiguration.class));
 
         // And spawn the module
         final EyeTrackingDevice device = new EyeTrackingDevice(applet, pm);
