@@ -210,12 +210,12 @@ public class EyeTrackingDevice {
 
                 // And gaze evaluation data
                 final GazeEvaluatorManager gazeEvaluatorManager = EyeTrackingDevice.this.pluginManager.getPlugin(GazeEvaluatorManager.class);
-                final GazeEvaluator gazeEvaluator = gazeEvaluatorManager.createGazeEvaluator(device);
+                final GazeEvaluator gazeEvaluator = gazeEvaluatorManager.createEvaluator(device);
 
-                gazeEvaluator.addGazeEvaluationListener(new FixationListener() {
+                gazeEvaluator.addEvaluationListener(new FixationListener() {
 
                     @Override
-                    public void newGazeEvaluationEvent(FixationEvent arg0) {
+                    public void newEvaluationEvent(FixationEvent arg0) {
                         if (arg0.getType() != FixationEventType.FIXATION_START) return;
                         EyeTrackingDevice.this.currentStatus = "We received fixations. All is fine now :-).";
 
