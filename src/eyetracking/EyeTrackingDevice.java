@@ -311,7 +311,7 @@ public class EyeTrackingDevice {
         props.setProperty(UpdateCheck.class, "update.url", "http://api.text20.net/common/versioncheck/");
         props.setProperty(UpdateCheck.class, "update.enabled", "true");
         props.setProperty(UpdateCheck.class, "product.name", "peep");
-        props.setProperty(UpdateCheck.class, "product.version", "1.2");
+        props.setProperty(UpdateCheck.class, "product.version", "1.3");
 
         // Create plugin loader
         final PluginManager pm = PluginManagerFactory.createPluginManager(props);
