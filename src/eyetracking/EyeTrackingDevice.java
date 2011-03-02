@@ -26,6 +26,8 @@ import java.awt.Point;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import net.xeoh.plugins.base.PluginManager;
 import net.xeoh.plugins.base.impl.PluginManagerFactory;
@@ -61,7 +63,7 @@ public class EyeTrackingDevice {
     final PApplet myParent;
 
     /** Do we need this? */
-    private final String VERSION = "1.2.0";
+    private final String VERSION = "1.3.0";
 
     /** The core(tm) */
     final PluginManager pluginManager;
@@ -69,13 +71,19 @@ public class EyeTrackingDevice {
     /** Prevents us from running setup twice */
     final AtomicBoolean setupComplete = new AtomicBoolean(false);
 
+    /** Locks the precision object when it's being changed */
+    final Lock precisionLock = new ReentrantLock();
+
+    /** Our current precision data object */
+    final PrecisionData currentPrecision = new PrecisionData();
+
     /** Current status debug string. */
     String currentStatus = "CURRENT STATUS UNSET";
 
     /** Current gaze position x coordinate (shorthand for eyes.currentFixationX) */
     public volatile int x = -1;
 
-    /** Current gaze position y coordinate (shorthand for eyes.currentFixationY)*/
+    /** Current gaze position y coordinate (shorthand for eyes.currentFixationY) */
     public volatile int y = -1;
 
     /** Current head position */
@@ -95,7 +103,7 @@ public class EyeTrackingDevice {
      * Create an eye tracking device.
      * 
      * @param theParent
-     * @param instantSetup 
+     * @param instantSetup
      */
     private EyeTrackingDevice(PApplet theParent, PluginManager pm) {
         this.myParent = theParent;
@@ -105,7 +113,7 @@ public class EyeTrackingDevice {
     }
 
     /**
-     * Can be called to debug the current status. 
+     * Can be called to debug the current status.
      */
     public void debug() {
         System.out.println(this.currentStatus);
@@ -147,9 +155,11 @@ public class EyeTrackingDevice {
                 device.addTrackingListener(new EyeTrackingListener() {
 
                     @Override
+                    @SuppressWarnings("unused")
                     public void newTrackingEvent(EyeTrackingEvent arg0) {
+
+                        // Upon a new tracking event, first check where we are on the screen
                         Point location = null;
-                        @SuppressWarnings("unused")
                         Dimension size = new Dimension(0, 0);
                         try {
                             location = EyeTrackingDevice.this.myParent.frame.getLocationOnScreen();
@@ -157,6 +167,7 @@ public class EyeTrackingDevice {
                         } catch (Exception e) {
                             //
                         }
+
                         // Keep a constant size for our average
                         if (headPositions.size() > EyeTrackingDevice.this.config.averagingHeadPositionSize)
                             headPositions.remove(0);
@@ -181,28 +192,44 @@ public class EyeTrackingDevice {
                             average[i] /= headPositions.size();
                         }
 
-                        EyeTrackingDevice.this.head.x = average[0];
-                        EyeTrackingDevice.this.head.y = average[1];
-                        EyeTrackingDevice.this.head.z = average[2];
+                        // Update our data
+                        try {
+                            EyeTrackingDevice.this.precisionLock.lock();
+                            EyeTrackingDevice.this.currentPrecision.rawTime = arg0.getEventTime();
+                            EyeTrackingDevice.this.head.x = average[0];
+                            EyeTrackingDevice.this.head.y = average[1];
+                            EyeTrackingDevice.this.head.z = average[2];
 
-                        // Process eye positions
-                        Point gazeCenter = arg0.getGazeCenter();
-                        if (gazeCenter != null && gazeCenter.x > 0 && gazeCenter.y > 0) {
-                            gazePositions.add(gazeCenter);
-                            Point avg = new Point();
+                            // Process eye positions
+                            Point gazeCenter = arg0.getGazeCenter();
+                            if (gazeCenter != null && gazeCenter.x > 0 && gazeCenter.y > 0) {
+                                gazePositions.add(gazeCenter);
+                                Point avg = new Point();
 
-                            for (Point point : gazePositions) {
-                                avg.x += point.x;
-                                avg.y += point.y;
+                                for (Point point : gazePositions) {
+                                    avg.x += point.x;
+                                    avg.y += point.y;
+                                }
+
+                                avg.x /= gazePositions.size();
+                                avg.y /= gazePositions.size();
+
+                                if (location != null) {
+                                    EyeTrackingDevice.this.eyes.rawX = avg.x - location.x;
+                                    EyeTrackingDevice.this.eyes.rawY = avg.y - location.y;
+
+                                    EyeTrackingDevice.this.currentPrecision.rawX = EyeTrackingDevice.this.eyes.rawX;
+                                    EyeTrackingDevice.this.currentPrecision.rawY = EyeTrackingDevice.this.eyes.rawY;
+                                    EyeTrackingDevice.this.currentPrecision.rawValid = true;
+                                } else {
+                                    EyeTrackingDevice.this.currentPrecision.rawValid = false;
+                                }
+                            } else {
+                                EyeTrackingDevice.this.currentPrecision.rawValid = false;
                             }
 
-                            avg.x /= gazePositions.size();
-                            avg.y /= gazePositions.size();
-
-                            if (location != null) {
-                                EyeTrackingDevice.this.eyes.rawX = avg.x - location.x;
-                                EyeTrackingDevice.this.eyes.rawY = avg.y - location.y;
-                            }
+                        } finally {
+                            EyeTrackingDevice.this.precisionLock.unlock();
                         }
 
                     }
@@ -227,43 +254,61 @@ public class EyeTrackingDevice {
                         Dimension size = new Dimension(0, 0);
 
                         try {
+                            EyeTrackingDevice.this.precisionLock.lock();
+                            EyeTrackingDevice.this.currentPrecision.fixationTime = arg0.getGenerationTime();
+
                             location = EyeTrackingDevice.this.myParent.frame.getLocationOnScreen();
                             size = EyeTrackingDevice.this.myParent.frame.getSize();
+
+                            // Check if there really is a location
+                            if (location == null) {
+                                // Can't be looking if there is no location on the screen
+                                EyeTrackingDevice.this.isLooking = false;
+                                EyeTrackingDevice.this.x = -1;
+                                EyeTrackingDevice.this.y = -1;
+
+                                EyeTrackingDevice.this.eyes.currentFixationX = -1;
+                                EyeTrackingDevice.this.eyes.currentFixationY = -1;
+
+                                EyeTrackingDevice.this.currentPrecision.fixationX = -1;
+                                EyeTrackingDevice.this.currentPrecision.fixationY = -1;
+                                EyeTrackingDevice.this.currentPrecision.fixationValid = false;
+
+                                return;
+                            }
+
+                            EyeTrackingDevice.this.x = center.x - location.x;
+                            EyeTrackingDevice.this.y = center.y - location.y;
+
+                            EyeTrackingDevice.this.eyes.currentFixationX = EyeTrackingDevice.this.x;
+                            EyeTrackingDevice.this.eyes.currentFixationY = EyeTrackingDevice.this.y;
+
+                            EyeTrackingDevice.this.currentPrecision.fixationX = EyeTrackingDevice.this.x;
+                            EyeTrackingDevice.this.currentPrecision.fixationY = EyeTrackingDevice.this.y;
+                            EyeTrackingDevice.this.currentPrecision.fixationValid = true;
+
+                            // Revoke our info in case its off on the right (lower) side
+                            if (EyeTrackingDevice.this.x >= size.width || EyeTrackingDevice.this.y >= size.height || EyeTrackingDevice.this.x < 0 || EyeTrackingDevice.this.y < 0) {
+                                EyeTrackingDevice.this.x = -1;
+                                EyeTrackingDevice.this.y = -1;
+                                EyeTrackingDevice.this.eyes.currentFixationX = -1;
+                                EyeTrackingDevice.this.eyes.currentFixationY = -1;
+                                EyeTrackingDevice.this.isLooking = false;
+
+                                EyeTrackingDevice.this.currentPrecision.fixationX = -1;
+                                EyeTrackingDevice.this.currentPrecision.fixationY = -1;
+                                EyeTrackingDevice.this.currentPrecision.fixationValid = false;
+
+                                return;
+                            }
+
+                            EyeTrackingDevice.this.isLooking = true;
                         } catch (Exception e) {
-                            //
-                        }
-
-                        // Check if there really is a location 
-                        if (location == null) {
-                            // Can't be looking if there is no location on the screen
-                            EyeTrackingDevice.this.isLooking = false;
-                            EyeTrackingDevice.this.x = -1;
-                            EyeTrackingDevice.this.y = -1;
-
-                            EyeTrackingDevice.this.eyes.currentFixationX = -1;
-                            EyeTrackingDevice.this.eyes.currentFixationY = -1;
-
-                            return;
-                        }
-
-                        EyeTrackingDevice.this.x = center.x - location.x;
-                        EyeTrackingDevice.this.y = center.y - location.y;
-
-                        EyeTrackingDevice.this.eyes.currentFixationX = EyeTrackingDevice.this.x;
-                        EyeTrackingDevice.this.eyes.currentFixationY = EyeTrackingDevice.this.y;
-
-                        // Revoke our info in case its off on the right (lower) side
-                        if (EyeTrackingDevice.this.x >= size.width || EyeTrackingDevice.this.y >= size.height || EyeTrackingDevice.this.x < 0 || EyeTrackingDevice.this.y < 0) {
-                            EyeTrackingDevice.this.x = -1;
-                            EyeTrackingDevice.this.y = -1;
-                            EyeTrackingDevice.this.eyes.currentFixationX = -1;
-                            EyeTrackingDevice.this.eyes.currentFixationY = -1;
-                            EyeTrackingDevice.this.isLooking = false;
-                            return;
-                        }
-
-                        EyeTrackingDevice.this.isLooking = true;
-                    }
+                             //
+                         } finally {
+                             EyeTrackingDevice.this.precisionLock.unlock();
+                         }
+                     }
                 });
 
                 EyeTrackingDevice.this.currentStatus = "Your setup appears fine; however, we haven't received " + "any fixations yet. Either nobody is looking at the screen, " + "or the tracker does not see you. In case you're using a simulator then something is probably broken. Did you put debug() inside a loop and wait long enough?";
@@ -286,8 +331,23 @@ public class EyeTrackingDevice {
     }
 
     /**
+     * Returns the curren precision object
+     * 
+     * @return PrecisionData
+     */
+    public PrecisionData precisionData() {
+        try {
+            this.precisionLock.lock();
+            return (PrecisionData) this.currentPrecision.clone();
+        } finally {
+            this.precisionLock.unlock();
+        }
+    }
+
+    /**
      * Returns a device
-     * @param applet 
+     * 
+     * @param applet
      * 
      * @return .
      */
@@ -297,9 +357,10 @@ public class EyeTrackingDevice {
 
     /**
      * Returns a device
-     * @param applet 
      * 
-     * @param address 
+     * @param applet
+     * 
+     * @param address
      * 
      * @return .
      */
@@ -318,7 +379,7 @@ public class EyeTrackingDevice {
 
         // Register plugins the really fast way
         pm.addPluginsFrom(new ClassURI(UpdateCheckImpl.class).toURI());
-        pm.addPluginsFrom(new ClassURI(InformationBrokerImpl.class).toURI());        
+        pm.addPluginsFrom(new ClassURI(InformationBrokerImpl.class).toURI());
         pm.addPluginsFrom(new ClassURI(RemoteAPIImpl.class).toURI());
         pm.addPluginsFrom(new ClassURI(RemoteDiscoveryImpl.class).toURI());
         pm.addPluginsFrom(new ClassURI(TrackingServerDeviceProviderImpl.class).toURI());
